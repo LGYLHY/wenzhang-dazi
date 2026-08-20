@@ -1,0 +1,85 @@
+/* ===========================================================
+ * 文案搭子 · 设计 Token（与文案搭子_设计文档.md 完全一致）
+ * 所有页面/组件必须引用这些变量，禁止写死颜色与间距。
+ * =========================================================== */
+:root {
+  /* 品牌主色 */
+  --c-primary: #E8590C;        /* 暖橘：主按钮、选中态、强调 */
+  --c-primary-dark: #C7480A;   /* hover/active 加深 */
+  --c-secondary: #0D9488;      /* 青绿：次要操作、AI 标识、成功点缀 */
+  --c-accent: #FFB703;         /* 暖黄：收藏星标、小标签强调 */
+
+  /* 背景 */
+  --c-bg: #FFF7F2;             /* 页面背景 米白偏暖 */
+  --c-card: #FFFFFF;          /* 卡片背景 */
+
+  /* 文字层级 */
+  --c-text-1: #1A1A1A;
+  --c-text-2: #6B6B6B;
+  --c-text-3: #9A9A9A;
+
+  /* 语义色 */
+  --c-success: #16A34A;
+  --c-warning: #F59E0B;
+  --c-error: #DC2626;
+
+  /* 阴影（Material 分层） */
+  --shadow-card: 0 2px 8px rgba(232, 89, 12, 0.08);
+  --shadow-hover: 0 4px 16px rgba(232, 89, 12, 0.14);
+
+  /* 圆角 */
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+
+  /* 间距（8px 栅格） */
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-md: 12px;
+  --sp-lg: 16px;
+  --sp-xl: 24px;
+  --sp-2xl: 32px;
+
+  /* 字体 */
+  --font-base: "Source Han Sans SC", "思源黑体", system-ui, -apple-system,
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* ===== 情绪色（文案卡左侧竖条）===== */
+  --em-daily: #E8590C;
+  --em-heal:  #0D9488;
+  --em-funny: #FFB703;
+  --em-art:   #7F77DD;
+  --em-sell:  #A8763E;
+  --em-vs:    #378ADD;
+  --em-fresh: #5DCAA5;
+  --em-love:  #F2708A;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #app { height: 100%; }
+
+body {
+  font-family: var(--font-base);
+  background: var(--c-bg);
+  color: var(--c-text-1);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+input, textarea {
+  font-family: inherit;
+  font-size: 15px;
+}
+::selection { background: rgba(232, 89, 12, 0.18); }
+
+a { color: var(--c-primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
