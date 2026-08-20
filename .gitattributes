@@ -1,0 +1,12 @@
+# Force Windows line endings (CRLF) for batch scripts so they parse correctly on Windows.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Keep shell scripts with LF.
+*.sh text eol=lf
+
+# Never let Git touch these as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
