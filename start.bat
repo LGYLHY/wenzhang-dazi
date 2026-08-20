@@ -177,16 +177,23 @@ echo ============================================
 echo.
 echo Two service windows are running. Use stop.bat to close them.
 
-REM ---- wait for frontend to be ready, then ALWAYS open browser ----
-echo [INFO] Waiting for frontend to be ready ...
+REM ---- wait for frontend to be ready, then open browser ----
+echo [INFO] Waiting for frontend to be ready (up to 40s) ...
 set "FCNT=0"
 :fwait
 set /a FCNT+=1
 timeout /t 1 /nobreak >nul
 powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; try{$r=Invoke-WebRequest -Uri 'http://localhost:%FPORT%/' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0}else{exit 1}}catch{exit 1}" >nul 2>&1
-if not errorlevel 1 goto fopen
-if "%FCNT%"=="12" goto fopen
+if not errorlevel 1 goto fready
+if "%FCNT%"=="40" goto fnotready
 goto fwait
+:fready
+echo [OK] Frontend is up.
+goto fopen
+:fnotready
+echo [WARN] Frontend did not respond after 40s.
+echo        Check the "frontend-%FPORT%" window - it should show "Local: http://localhost:%FPORT%/".
+echo        Browser will still open; if the page fails, wait 10s then press F5.
 :fopen
 start "" "http://localhost:%FPORT%"
 echo [INFO] Browser opened: http://localhost:%FPORT%
