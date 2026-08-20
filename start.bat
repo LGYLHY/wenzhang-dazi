@@ -48,8 +48,8 @@ echo.
 REM ---- pick a FREE backend port (avoid colliding with another running service) ----
 set "BPORT=8000"
 :bportscan
-powershell -NoProfile -Command "try{Get-NetTCPConnection -LocalPort %BPORT% -ErrorAction Stop; exit 1}catch{exit 0}" >nul 2>&1
-if errorlevel 1 goto bportbusy
+netstat -ano | findstr ":%BPORT% " | findstr "LISTENING" >nul 2>&1
+if not errorlevel 1 goto bportbusy
 goto bportok
 :bportbusy
 set /a BPORT+=1
@@ -66,8 +66,8 @@ set "BPORT=8000"
 REM ---- pick a FREE frontend port (avoid showing someone else's project on 5173) ----
 set "FPORT=5173"
 :fportscan
-powershell -NoProfile -Command "try{Get-NetTCPConnection -LocalPort %FPORT% -ErrorAction Stop; exit 1}catch{exit 0}" >nul 2>&1
-if errorlevel 1 goto fportbusy
+netstat -ano | findstr ":%FPORT% " | findstr "LISTENING" >nul 2>&1
+if not errorlevel 1 goto fportbusy
 goto fportok
 :fportbusy
 set /a FPORT+=1
@@ -165,10 +165,10 @@ echo [4/4] Waiting for backend to be ready (max 30s) ...
 set "CNT=0"
 :waitloop
 set /a CNT+=1
-timeout /t 2 /nobreak >nul
-powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; try{$r=Invoke-WebRequest -Uri 'http://localhost:%BPORT%/api/health' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0}else{exit 1}}catch{exit 1}" >nul 2>&1
+timeout /t 1 /nobreak >nul
+curl -s -o nul --max-time 2 "http://localhost:%BPORT%/api/health" >nul 2>&1
 if not errorlevel 1 goto ready
-if "%CNT%"=="15" goto fe
+if "%CNT%"=="30" goto fe
 goto waitloop
 :ready
 echo [OK] Backend is up.
@@ -187,20 +187,20 @@ echo.
 echo Two service windows are running. Use stop.bat to close them.
 
 REM ---- wait for frontend to be ready, then open browser ----
-echo [INFO] Waiting for frontend to be ready (up to 40s) ...
+echo [INFO] Waiting for frontend to be ready (up to 30s) ...
 set "FCNT=0"
 :fwait
 set /a FCNT+=1
 timeout /t 1 /nobreak >nul
-powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; try{$r=Invoke-WebRequest -Uri 'http://localhost:%FPORT%/' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0}else{exit 1}}catch{exit 1}" >nul 2>&1
+curl -s -o nul --max-time 2 "http://localhost:%FPORT%/" >nul 2>&1
 if not errorlevel 1 goto fready
-if "%FCNT%"=="40" goto fnotready
+if "%FCNT%"=="30" goto fnotready
 goto fwait
 :fready
 echo [OK] Frontend is up.
 goto fopen
 :fnotready
-echo [WARN] Frontend did not respond after 40s.
+echo [WARN] Frontend did not respond after 30s.
 echo        Check the "frontend-%FPORT%" window - it should show "Local: http://localhost:%FPORT%/".
 echo        Browser will still open; if the page fails, wait 10s then press F5.
 :fopen
