@@ -14,6 +14,7 @@ class GenerateRequest(BaseModel):
     tones: list[ToneName] = Field(default_factory=list, max_length=6)
     template: Optional[str] = Field(default=None, max_length=20, description="模板 prompt_key，如 food/travel/festival/emotion/promo")
     device_id: str = Field(..., min_length=4, max_length=64)
+    swap_text: Optional[str] = Field(default=None, max_length=500, description="换一条时传入的当前文案，要求新生成内容不要与之重复")
 
 
 # 润色风格：不只文艺，支持多种风格改写

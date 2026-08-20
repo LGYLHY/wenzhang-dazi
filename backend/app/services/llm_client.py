@@ -171,13 +171,16 @@ def _keyword_pool(text: str, template_key: str | None) -> list[tuple[str, str, s
     return None
 
 
-def _mock_pick(text: str, tones: list[str], vibe_hint: str | None, template_key: str | None) -> dict[str, Any]:
+def _mock_pick(text: str, tones: list[str], vibe_hint: str | None, template_key: str | None, swap_text: str | None = None) -> dict[str, Any]:
     """按模板/输入联想 + 用户选择语气挑 3 条。
     去重策略：全历史去重（_ever_used），分类池用尽后混入全池，
     保证连续生成多轮不出现完全相同的文案。
+    swap_text：换一条时传入的当前文案，强制从候选中排除，避免"换了个寂寞"。
     """
     global _used_texts, _ever_used
     pool = _keyword_pool(text, template_key) or list(MOCK_COPIES)
+    if swap_text:
+        pool = [c for c in pool if c[2] != swap_text]
     if tones:
         # 联想池按语气过滤；不足 3 条则回退到全池按语气过滤；再不足则全池
         tone_pool = [c for c in pool if c[0] in tones]
@@ -227,22 +230,24 @@ def call_qwen_vl(
     template_key: str | None,
     persona_examples: list[str],
     timeout_s: float = 5.0,
+    swap_text: str | None = None,
 ) -> dict[str, Any]:
     """调用 Qwen-VL；超时/未配置走 mock。
 
     返回：{"vibe": str, "copies": [{"style","emotion","text"} ...]}
+    swap_text：换一条时传入，要求新内容不与它重复。
     """
     if USE_MOCK:
         # mock 路径下模拟一点点耗时，但确保 <5s
         time.sleep(min(0.6, timeout_s / 8))
-        return _mock_pick(text, tones, None, template_key)
+        return _mock_pick(text, tones, None, template_key, swap_text)
 
     # ===== 真实接口路径（示意 + 安全护栏）=====
     try:
         import dashscope  # type: ignore
         from dashscope import MultiModalConversation  # type: ignore
 
-        messages = _build_messages(image_b64, text, tones, template_key, persona_examples)
+        messages = _build_messages(image_b64, text, tones, template_key, persona_examples, swap_text)
         resp = MultiModalConversation.call(
             model="qwen-vl-plus",
             messages=messages,
@@ -252,16 +257,19 @@ def call_qwen_vl(
         # 真实 AI 可能少给：不足 3 条时用 mock 池补充，保证体验一致
         copies = result.get("copies") or []
         if len(copies) < 3:
-            extra = _mock_pick(text, tones, None, template_key)["copies"]
+            extra = _mock_pick(text, tones, None, template_key, swap_text)["copies"]
             used = {c["text"] for c in copies}
             result["copies"] = copies + [c for c in extra if c["text"] not in used][: 3 - len(copies)]
+        # 若仍包含 swap_text，剔除它（极端兜底，避免"换了个寂寞"）
+        if swap_text:
+            result["copies"] = [c for c in result["copies"] if c["text"] != swap_text][:3]
         return result
     except Exception as exc:  # noqa: BLE001
         # 兜底走 mock，不让用户白屏
-        return _mock_pick(text, tones, None, template_key)
+        return _mock_pick(text, tones, None, template_key, swap_text)
 
 
-def _build_messages(image_b64, text, tones, template_key, persona_examples):
+def _build_messages(image_b64, text, tones, template_key, persona_examples, swap_text=None):
     """组装多模态 messages（真实接口路径）"""
     sys = (
         "你是\"朋友圈文案搭子\"，根据用户的输入生成 3 条不同风格的中文朋友圈文案。\n"
@@ -278,7 +286,14 @@ def _build_messages(image_b64, text, tones, template_key, persona_examples):
         # 去掉 data:image/...;base64, 前缀
         b64 = re.sub(r"^data:image/\w+;base64,", "", image_b64)
         user_content.append({"image": f"data:image/jpeg;base64,{b64}"})
-    user_content.append({"text": f"心情：{text}\n语气：{tones}\n模板：{template_key}\n历史风格参考：{persona_examples}"})
+    user_text = f"心情：{text}\n语气：{tones}\n模板：{template_key}\n历史风格参考：{persona_examples}"
+    if swap_text:
+        user_text += (
+            "\n【换一条】下面这条是用户想替换掉的，新生成的 3 条里"
+            "严禁与之雷同或仅改几个字，请换全新的角度与表达："
+            f"「{swap_text}」"
+        )
+    user_content.append({"text": user_text})
     return [{"role": "system", "content": [{"text": sys}]}, {"role": "user", "content": user_content}]
 
 

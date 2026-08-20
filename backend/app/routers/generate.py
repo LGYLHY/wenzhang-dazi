@@ -80,6 +80,7 @@ async def generate(payload: GenerateRequest):
                 payload.template,
                 examples,
                 GENERATE_TIMEOUT_S,
+                payload.swap_text,
             ),
             timeout=GENERATE_TIMEOUT_S + 1.0,
         )

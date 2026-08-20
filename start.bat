@@ -40,6 +40,42 @@ if "%NPM%"=="" goto nonpm
 echo [OK] npm    : %NPM%
 echo.
 
+REM ---- pick a FREE backend port (avoid colliding with another running service) ----
+set "BPORT=8000"
+:bportscan
+powershell -NoProfile -Command "try{Get-NetTCPConnection -LocalPort %BPORT% -ErrorAction Stop; exit 1}catch{exit 0}" >nul 2>&1
+if errorlevel 1 goto bportbusy
+goto bportok
+:bportbusy
+set /a BPORT+=1
+if %BPORT% gtr 8020 goto bportfail
+goto bportscan
+:bportok
+echo [OK] backend port : %BPORT%
+goto fportprep
+:bportfail
+echo [WARN] Could not find a free port 8000-8020, falling back to 8000.
+set "BPORT=8000"
+:fportprep
+
+REM ---- pick a FREE frontend port (avoid showing someone else's project on 5173) ----
+set "FPORT=5173"
+:fportscan
+powershell -NoProfile -Command "try{Get-NetTCPConnection -LocalPort %FPORT% -ErrorAction Stop; exit 1}catch{exit 0}" >nul 2>&1
+if errorlevel 1 goto fportbusy
+goto fportok
+:fportbusy
+set /a FPORT+=1
+if %FPORT% gtr 5199 goto fportfail
+goto fportscan
+:fportok
+echo [OK] frontend port: %FPORT%
+goto mktemp
+:fportfail
+echo [WARN] Could not find a free port 5173-5199, falling back to 5173.
+set "FPORT=5173"
+:mktemp
+
 REM ---- create temp helper scripts so 'start' never sees the project path with parens ----
 set "TMP=%TEMP%\wzd-launcher-%RANDOM%"
 mkdir "%TMP%" 2>nul
@@ -53,7 +89,7 @@ set "NPM_CONFIG_TMP=%TEMP%\npm-tmp-wzd"
     echo @echo off
     echo chcp 65001 ^>nul
     echo cd /d "%ROOT%\backend"
-    echo "%PY%" -m uvicorn app:app --host 0.0.0.0 --port 8000
+    echo "%PY%" -m uvicorn app:app --host 0.0.0.0 --port %BPORT%
     echo.
     echo [backend stopped] Press any key to close.
     echo pause ^>nul
@@ -63,7 +99,8 @@ set "NPM_CONFIG_TMP=%TEMP%\npm-tmp-wzd"
     echo @echo off
     echo chcp 65001 ^>nul
     echo cd /d "%ROOT%\frontend"
-    echo call "%NPM%" run dev -- --host 0.0.0.0 --port 5173
+    echo set "VITE_API_PORT=%BPORT%"
+    echo call "%NPM%" run dev -- --port %FPORT%
     echo.
     echo [frontend stopped] Press any key to close.
     echo pause ^>nul
@@ -76,8 +113,8 @@ set "NPM_CONFIG_TMP=%TEMP%\npm-tmp-wzd"
     echo call "%NPM%" install --no-audit --no-fund
 ) > "%TMP%\do_install.bat"
 
-echo [1/4] Starting backend (port 8000) ...
-start "backend-8000" cmd /c "%TMP%\run_backend.bat"
+echo [1/4] Starting backend (port %BPORT%) ...
+start "backend-%BPORT%" cmd /c "%TMP%\run_backend.bat"
 echo [OK] backend window opened.
 
 echo [2/4] Preparing frontend ...
@@ -110,8 +147,8 @@ exit /b 1
 echo [OK] npm install done.
 :have_modules
 
-echo [3/4] Starting frontend (port 5173) ...
-start "frontend-5173" cmd /c "%TMP%\run_frontend.bat"
+echo [3/4] Starting frontend (port %FPORT%) ...
+start "frontend-%FPORT%" cmd /c "%TMP%\run_frontend.bat"
 echo [OK] frontend window opened.
 
 echo.
@@ -120,7 +157,7 @@ set "CNT=0"
 :waitloop
 set /a CNT+=1
 timeout /t 2 /nobreak >nul
-powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; try{$r=Invoke-WebRequest -Uri 'http://localhost:8000/api/health' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0}else{exit 1}}catch{exit 1}" >nul 2>&1
+powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; try{$r=Invoke-WebRequest -Uri 'http://localhost:%BPORT%/api/health' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0}else{exit 1}}catch{exit 1}" >nul 2>&1
 if not errorlevel 1 goto ready
 if "%CNT%"=="15" goto fe
 goto waitloop
@@ -128,25 +165,25 @@ goto waitloop
 echo [OK] Backend is up.
 goto showurls
 :fe
-echo [WARN] Backend did not respond after 30s. Check the "backend-8000" window.
+echo [WARN] Backend did not respond after 30s. Check the "backend-%BPORT%" window.
 
 :showurls
 echo.
 echo ============================================
 echo  Product is ready!
-echo  Browser :  http://localhost:5173
-echo  Backend :  http://localhost:8000/api/health
+echo  Browser :  http://localhost:%FPORT%
+echo  Backend :  http://localhost:%BPORT%/api/health
 echo ============================================
 echo.
 echo Two service windows are running. Use stop.bat to close them.
 
-REM ---- smart-open browser ----
-powershell -NoProfile -Command "try{$c=Get-NetTCPConnection -LocalPort 5173 -State Established -ErrorAction Stop; exit 1}catch{exit 0}" >nul 2>&1
+REM ---- smart-open browser (don't duplicate an existing tab) ----
+powershell -NoProfile -Command "try{$c=Get-NetTCPConnection -LocalPort %FPORT% -State Established -ErrorAction Stop; exit 1}catch{exit 0}" >nul 2>&1
 if not errorlevel 1 (
-    start "" "http://localhost:5173"
+    start "" "http://localhost:%FPORT%"
     echo [INFO] Browser opened.
 ) else (
-    echo [INFO] A page is already open - just press F5 in that tab.
+    echo [INFO] A page is already open on port %FPORT% - just press F5 in that tab.
 )
 
 echo.

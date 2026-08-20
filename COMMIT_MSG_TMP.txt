@@ -1,0 +1,12 @@
+修复换一条(调API换稿) + start.bat动态端口避免冲突
+
+换一条:
+- 后端 GenerateRequest 增加 swap_text；call_qwen_vl/_mock_pick/_build_messages 接收并排除该文案，确保换稿内容全新不重复
+- 前端 onSwap 改为调用 /api/generate 并传 swap_text，从返回中挑一条与当前不同(尽量同风格)的替换；移除写死的 BACKUP_POOL
+- generate.js 增加 swapText 字段
+
+动态端口(避免跳到别人项目):
+- start.bat 自动探测空闲后端端口(8000+)与前端端口(5173+)并显式启动，浏览器打开实际端口
+- vite.config.js 读取 VITE_API_PORT 使代理指向动态后端端口
+- stop.bat 改为按端口范围(8000-8020 / 5173-5199)清理
+- 保留临时脚本绕开括号路径 + npm 国内镜像兜底

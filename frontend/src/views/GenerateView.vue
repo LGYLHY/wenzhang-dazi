@@ -48,7 +48,7 @@
         :text-override="c.text.slice(0, typed[i] || 0)"
         :interactive="!streaming"
         @copy="onCopy"
-        @swap="onSwap(i, $event)"
+        @swap="onSwap(i)"
         @toggle-fav="onToggleFav"
       />
     </div>
@@ -257,33 +257,52 @@ function onToggleFav(copy) {
   }
 }
 
-// "换一条"：用备用池里的一条**替换**当前卡片（不是追加）。
-// 保证替换后的文案与当前卡片不同；M2 阶段可改为重新调 /api/generate 换稿。
-const BACKUP_POOL = [
-  { style: '文艺', emotion: '清新', text: '今天的云像你写给我的信，慵懒得想让人读三遍。' },
-  { style: '日常', emotion: '治愈', text: '把今天的心情泡进热水里，拧干，就是明天。' },
-  { style: '幽默', emotion: '日常', text: '今日份的「假装在生活」已开机，请查收。' },
-  { style: '治愈', emotion: '清新', text: '风替你说完那句话，剩下的温柔都留给海。' },
-  { style: '日常', emotion: '日常', text: '今天想通了一件事：慢一点，不丢人。' },
-  { style: '凡尔赛', emotion: '日常', text: '也没刻意安排，就是恰好路过了一片很蓝的海。' },
-]
+// "换一条"：重新调用 /api/generate，把当前文案作为 swap_text 传给后端，
+// 后端会避开它、生成全新内容；前端挑一条与当前不同（尽量同风格）的替换该卡。
+const swappingIndex = ref(-1)
 
-async function onSwap(index, _old) {
+async function onSwap(index) {
   if (!copies.value[index]) return
+  if (swappingIndex.value >= 0) return // 防连点
   const current = copies.value[index]
-  const candidates = BACKUP_POOL.filter((p) => p.text !== current.text)
-  if (candidates.length === 0) {
-    toast.msg.value = '暂时没有更多备选文案了'
-    return
+  swappingIndex.value = index
+  try {
+    const resp = await apiGenerate({
+      text: text.value.trim(),
+      tones: tones.value,
+      imageBase64: imageBase64.value,
+      template: templateKey.value || null,
+      swapText: current.text,
+    })
+    const fresh = withMeta(resp.copies || [])
+    if (fresh.length === 0) {
+      toast.msg.value = '暂时没有更多备选文案了'
+      return
+    }
+    // 优先同风格、且文本不同于当前；否则任取一条不同的
+    const sameStyle = fresh.find((c) => c.style === current.style && c.text !== current.text)
+    const diff = fresh.find((c) => c.text !== current.text)
+    const pick = sameStyle || diff || fresh[0]
+    if (!pick || pick.text === current.text) {
+      toast.msg.value = '暂时没有更多备选文案了'
+      return
+    }
+    const next = [...copies.value]
+    next[index] = {
+      ...pick,
+      color: emotions.value[pick.emotion] || '#E8590C',
+      _key: `${Date.now()}-${index}-${pick.text.slice(0, 8)}`,
+    }
+    copies.value = next
+    // 该卡直接显示，不打字动画（其余卡保持）
+    const t = [...typed.value]
+    t[index] = pick.text.length
+    typed.value = t
+    toast.msg.value = '已换一条'
+  } catch (e) {
+    handleError(e)
+  } finally {
+    swappingIndex.value = -1
   }
-  const pick = candidates[Math.floor(Math.random() * candidates.length)]
-  const next = [...copies.value]
-  next[index] = {
-    ...pick,
-    color: emotions.value[pick.emotion] || '#E8590C',
-    _key: `${Date.now()}-${index}-${pick.text.slice(0, 8)}`,
-  }
-  copies.value = next
-  toast.msg.value = '已换一条'
 }
 </script>

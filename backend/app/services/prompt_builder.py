@@ -17,6 +17,7 @@ def build_user_payload(
     tones: list[str],
     template_key: str | None,
     persona_examples: list[str],
+    swap_text: str | None = None,
 ) -> str:
     parts = [f"用户心情：{user_text or '（未提供）'}"]
     parts.append(f"语气：{'、'.join(tones) or '不限'}")
@@ -28,4 +29,10 @@ def build_user_payload(
             + " | ".join(f"《{t}》" for t in persona_examples)
         )
     parts.append("请严格输出 JSON，不要额外解释。")
+    if swap_text:
+        parts.append(
+            "【换一条】以下这条是用户想替换掉的，新生成的 3 条里"
+            "严禁与之雷同或仅改几个字，请换全新的角度与表达："
+            f"「{swap_text}」"
+        )
     return "\n".join(parts)
