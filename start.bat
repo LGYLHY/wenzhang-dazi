@@ -23,11 +23,16 @@ echo        It MAY cause npm install to fail. Recommended: move to D:\wenzhang-d
 echo.
 :nowarn
 
-REM ---- locate python ----
+REM ---- locate python (MUST use a python that has chromadb;
+REM       user's PATH may put hermes-agent venv first which lacks it) ----
 set "PY="
-where python >nul 2>&1
-if not errorlevel 1 set "PY=python"
-if "%PY%"=="" if exist "%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe" set "PY=%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+if exist "%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe" set "PY=%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+if not "%PY%"=="" goto pyok
+for /f "delims=" %%i in ('where python 2^>nul') do (
+    set "PY=%%i"
+    goto pyok
+)
+:pyok
 if "%PY%"=="" goto nopython
 echo [OK] python : %PY%
 
@@ -118,8 +123,12 @@ start "backend-%BPORT%" cmd /c "%TMP%\run_backend.bat"
 echo [OK] backend window opened.
 
 echo [2/4] Preparing frontend ...
-if exist "%ROOT%\frontend\node_modules" goto have_modules
-echo       First run: installing frontend deps (1-3 min) ...
+if not exist "%ROOT%\frontend\node_modules" goto need_install
+if exist "%ROOT%\frontend\node_modules\.bin\vite.cmd" if exist "%ROOT%\frontend\node_modules\npm\bin\npm-cli.js" goto have_modules
+echo [INFO] node_modules incomplete (missing vite or npm bin) - reinstalling ...
+rd /s /q "%ROOT%\frontend\node_modules" >nul 2>&1
+:need_install
+echo       Installing frontend deps (1-3 min) ...
 echo.
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
