@@ -61,11 +61,16 @@ start "frontend-5173" /D "%ROOT%frontend" cmd /c ""%NPM%" run dev -- --host 0.0.
 
 echo [3/3] Waiting for backend to be ready ...
 set "BOK=0"
-for /L %%i in (1,1,25) do (
-    curl -s -o nul "http://localhost:8000/api/health" 2>nul
-    if not errorlevel 1 goto fe
-    timeout /t 1 /nobreak >nul
-)
+set "CNT=0"
+:healthloop
+curl -s -o nul "http://localhost:8000/api/health" 2>nul
+if not errorlevel 1 goto healthok
+set /a CNT+=1
+if "%CNT%"=="25" goto fe
+timeout /t 1 /nobreak >nul
+goto healthloop
+:healthok
+set "BOK=1"
 :fe
 timeout /t 5 /nobreak >nul
 if "%BOK%"=="1" echo [OK] Backend is up.
