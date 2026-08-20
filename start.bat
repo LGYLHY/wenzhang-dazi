@@ -10,18 +10,22 @@ echo  Wutang-mocha Wenan Dazi - One-click start
 echo ==========================================
 echo.
 
-REM ---- detect problematic path (Chinese / parens) and warn early ----
-echo %ROOT% | findstr "(" >nul
-if not errorlevel 1 goto warnpath
-echo %ROOT% | findstr /R "[一-龥]" >nul
-if not errorlevel 1 goto warnpath
-goto nowarn
-
-:warnpath
-echo [WARN] The project path contains special characters (Chinese / parentheses).
-echo        It MAY cause npm install to fail. Recommended: move to D:\wenzhang-dazi
+REM ---- HARD REJECT paths with Chinese or parens (breaks Node 20 npm install on Windows) ----
+powershell -NoProfile -Command "if ('%ROOT%' -match '[\u4e00-\u9fa5()]') {exit 1} else {exit 0}" >nul 2>&1
+if errorlevel 1 goto badpath
+goto pathok
+:badpath
 echo.
-:nowarn
+echo [ERROR] Project path contains Chinese characters or parentheses.
+echo   Current: %ROOT%
+echo   This breaks npm install on Node 20 + Windows (known bug).
+echo   Please MOVE the project to a simple ASCII path, e.g.:
+echo     D:\wenzhang-dazi
+echo   Then double-click start.bat again.
+echo.
+pause
+exit /b 1
+:pathok
 
 REM ---- locate python (MUST use a python that has chromadb;
 REM       user's PATH may put hermes-agent venv first which lacks it) ----
@@ -144,13 +148,19 @@ if exist "%ROOT%\frontend\node_modules\.bin\vite.cmd" if exist "%ROOT%\frontend\
 echo [INFO] node_modules incomplete (missing vite or npm bin) - reinstalling ...
 rd /s /q "%ROOT%\frontend\node_modules" >nul 2>&1
 :need_install
+echo       Pre-repairing npm package (avoids Node 20 install bug) ...
+pushd "%ROOT%\frontend"
+"%NPM%" install npm --no-save --no-audit --no-fund >nul 2>&1
+popd
 echo       Installing frontend deps (1-3 min) ...
 echo.
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
 echo.
-echo [WARN] npm install failed. Workaround: clearing node_modules\npm and retrying ...
-rd /s /q "%ROOT%\frontend\node_modules\npm" >nul 2>&1
+echo [WARN] npm install failed. Re-repairing npm package and retrying ...
+pushd "%ROOT%\frontend"
+"%NPM%" install npm --no-save --no-audit --no-fund >nul 2>&1
+popd
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
 echo.
@@ -161,11 +171,17 @@ echo [WARN] Still failed. Retrying with China mirror (npmmirror.com) ...
     echo cd /d "%ROOT%\frontend"
     echo call "%NPM%" install --no-audit --no-fund --registry=https://registry.npmmirror.com
 ) > "%TMP%\do_install.bat"
+pushd "%ROOT%\frontend"
+"%NPM%" install npm --no-save --no-audit --no-fund >nul 2>&1
+popd
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
 echo.
 echo [WARN] Last attempt: full clean reinstall ...
 rd /s /q "%ROOT%\frontend\node_modules" >nul 2>&1
+pushd "%ROOT%\frontend"
+"%NPM%" install npm --no-save --no-audit --no-fund >nul 2>&1
+popd
 (
     echo @echo off
     echo chcp 65001 ^>nul
@@ -177,7 +193,7 @@ if not errorlevel 1 goto install_ok
 echo.
 echo [ERROR] npm install failed after 3 attempts. Please try:
 echo   1. Switch to a different network (e.g. mobile hotspot)
-echo   2. Move project to a simple path like D:\wenzhang-dazi
+echo   2. Make sure project path has NO Chinese/parentheses, e.g. D:\wenzhang-dazi
 echo   3. Update Node.js to 20 LTS or 22+: https://nodejs.org/
 echo.
 pause
