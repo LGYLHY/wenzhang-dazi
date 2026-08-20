@@ -1,100 +1,178 @@
 @echo off
 chcp 65001 >nul
-title Wenzhang Dazi - Launcher
+title Wutang-mocha Wenan Dazi - Launcher
 
 set "ROOT=%~dp0"
+if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
-rem ---- locate python ----
-set "PY=python"
+echo ==========================================
+echo  Wutang-mocha Wenan Dazi - One-click start
+echo ==========================================
+echo.
+
+REM ---- detect problematic path (Chinese / parens) and warn early ----
+echo %ROOT% | findstr "(" >nul
+if not errorlevel 1 goto warnpath
+echo %ROOT% | findstr /R "[一-龥]" >nul
+if not errorlevel 1 goto warnpath
+goto nowarn
+
+:warnpath
+echo [WARN] The project path contains special characters (Chinese / parentheses).
+echo        It MAY cause npm install to fail. Recommended: move to D:\wenzhang-dazi
+echo.
+:nowarn
+
+REM ---- locate python ----
+set "PY="
 where python >nul 2>&1
-if not errorlevel 1 goto havepy
-if exist "%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe" set "PY=%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe"
-if exist "%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe" goto havepy
-echo [ERROR] Python not found. Install Python 3.11+ and tick "Add to PATH".
-pause
-exit /b 1
-:havepy
-
-rem ---- locate npm ----
-set "NPM=npm"
-where npm >nul 2>&1
-if not errorlevel 1 goto havenpm
-if exist "%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd" set "NPM=%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd"
-if exist "%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd" goto havenpm
-echo [ERROR] npm not found. Install Node.js 18+ and tick "Add to PATH".
-pause
-exit /b 1
-:havenpm
-
+if not errorlevel 1 set "PY=python"
+if "%PY%"=="" if exist "%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe" set "PY=%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+if "%PY%"=="" goto nopython
 echo [OK] python : %PY%
-echo [OK] npm    : %NPM%
 
-rem ---- first-run frontend install ----
-if exist "%ROOT%frontend\node_modules" goto skipinstall
-echo [INFO] First run: installing frontend deps (about 1-2 min)...
-pushd "%ROOT%frontend"
-call "%NPM%" install
-if errorlevel 1 goto instfail
-goto afterinstall
-:instfail
-echo [ERROR] npm install failed. Check network / Node install.
-popd
+REM ---- locate npm ----
+set "NPM="
+where npm >nul 2>&1
+if not errorlevel 1 set "NPM=npm"
+if "%NPM%"=="" if exist "%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd" set "NPM=%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd"
+if "%NPM%"=="" goto nonpm
+echo [OK] npm    : %NPM%
+echo.
+
+REM ---- create temp helper scripts so 'start' never sees the project path with parens ----
+set "TMP=%TEMP%\wzd-launcher-%RANDOM%"
+mkdir "%TMP%" 2>nul
+if not exist "%TMP%" goto tmpfail
+
+REM Use a SAFE cache dir (no parens) so npm never writes inside the project path
+set "NPM_CONFIG_CACHE=%TEMP%\npm-cache-wzd"
+set "NPM_CONFIG_TMP=%TEMP%\npm-tmp-wzd"
+
+(
+    echo @echo off
+    echo chcp 65001 ^>nul
+    echo cd /d "%ROOT%\backend"
+    echo "%PY%" -m uvicorn app:app --host 0.0.0.0 --port 8000
+    echo.
+    echo [backend stopped] Press any key to close.
+    echo pause ^>nul
+) > "%TMP%\run_backend.bat"
+
+(
+    echo @echo off
+    echo chcp 65001 ^>nul
+    echo cd /d "%ROOT%\frontend"
+    echo call "%NPM%" run dev -- --host 0.0.0.0 --port 5173
+    echo.
+    echo [frontend stopped] Press any key to close.
+    echo pause ^>nul
+) > "%TMP%\run_frontend.bat"
+
+(
+    echo @echo off
+    echo chcp 65001 ^>nul
+    echo cd /d "%ROOT%\frontend"
+    echo call "%NPM%" install --no-audit --no-fund
+) > "%TMP%\do_install.bat"
+
+echo [1/4] Starting backend (port 8000) ...
+start "backend-8000" cmd /c "%TMP%\run_backend.bat"
+echo [OK] backend window opened.
+
+echo [2/4] Preparing frontend ...
+if exist "%ROOT%\frontend\node_modules" goto have_modules
+echo       First run: installing frontend deps (1-3 min) ...
+echo.
+call "%TMP%\do_install.bat"
+if not errorlevel 1 goto install_ok
+echo.
+echo [WARN] npm install with default registry failed.
+echo        Retrying with China mirror (npmmirror.com) ...
+(
+    echo @echo off
+    echo chcp 65001 ^>nul
+    echo cd /d "%ROOT%\frontend"
+    echo call "%NPM%" install --no-audit --no-fund --registry=https://registry.npmmirror.com
+) > "%TMP%\do_install.bat"
+call "%TMP%\do_install.bat"
+if not errorlevel 1 goto install_ok
+echo.
+echo [ERROR] npm install failed. Please try:
+echo   1. Switch to a different network (e.g. mobile hotspot)
+echo   2. Move project to a simple path like D:\wenzhang-dazi
+echo   3. Check Node.js version (need 18+): node -v
+echo.
 pause
 exit /b 1
-:afterinstall
-popd
-:skipinstall
+
+:install_ok
+echo [OK] npm install done.
+:have_modules
+
+echo [3/4] Starting frontend (port 5173) ...
+start "frontend-5173" cmd /c "%TMP%\run_frontend.bat"
+echo [OK] frontend window opened.
 
 echo.
-echo ============================================
-echo   Wenzhang Dazi is starting...
-echo   Backend  : http://localhost:8000
-echo   Frontend : http://localhost:5173
-echo ============================================
-echo.
-
-echo [1/3] Starting backend (port 8000) ...
-start "backend-8000" /D "%ROOT%backend" cmd /c ""%PY%" -m uvicorn app:app --host 0.0.0.0 --port 8000"
-
-echo [2/3] Starting frontend (port 5173) ...
-start "frontend-5173" /D "%ROOT%frontend" cmd /c ""%NPM%" run dev -- --host 0.0.0.0 --port 5173 --strictPort"
-
-echo [3/3] Waiting for backend to be ready ...
-set "BOK=0"
+echo [4/4] Waiting for backend to be ready (max 30s) ...
 set "CNT=0"
-:healthloop
-curl -s -o nul "http://localhost:8000/api/health" 2>nul
-if not errorlevel 1 goto healthok
+:waitloop
 set /a CNT+=1
-if "%CNT%"=="25" goto fe
-timeout /t 1 /nobreak >nul
-goto healthloop
-:healthok
-set "BOK=1"
+timeout /t 2 /nobreak >nul
+powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; try{$r=Invoke-WebRequest -Uri 'http://localhost:8000/api/health' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0}else{exit 1}}catch{exit 1}" >nul 2>&1
+if not errorlevel 1 goto ready
+if "%CNT%"=="15" goto fe
+goto waitloop
+:ready
+echo [OK] Backend is up.
+goto showurls
 :fe
+echo [WARN] Backend did not respond after 30s. Check the "backend-8000" window.
+
+:showurls
+echo.
+echo ============================================
+echo  Product is ready!
+echo  Browser :  http://localhost:5173
+echo  Backend :  http://localhost:8000/api/health
+echo ============================================
+echo.
+echo Two service windows are running. Use stop.bat to close them.
+
+REM ---- smart-open browser ----
+powershell -NoProfile -Command "try{$c=Get-NetTCPConnection -LocalPort 5173 -State Established -ErrorAction Stop; exit 1}catch{exit 0}" >nul 2>&1
+if not errorlevel 1 (
+    start "" "http://localhost:5173"
+    echo [INFO] Browser opened.
+) else (
+    echo [INFO] A page is already open - just press F5 in that tab.
+)
+
+echo.
+echo This window will close in 5s. Services keep running.
 timeout /t 5 /nobreak >nul
-if "%BOK%"=="1" echo [OK] Backend is up.
-if not "%BOK%"=="1" echo [WARN] Backend did not respond - check the "backend-8000" window.
+exit /b 0
 
-rem ---- smart-open browser (don't duplicate tab) ----
-powershell -NoProfile -Command "try { if (Get-NetTCPConnection -LocalPort 5173 -State Established -ErrorAction Stop) { exit 1 } else { exit 0 } } catch { exit 2 }" >nul 2>&1
-if errorlevel 2 goto open
-if errorlevel 1 goto skip
-:open
-echo Opening browser...
-start "" "http://localhost:5173"
-goto done
-:skip
+:nopython
 echo.
-echo A page is already open - just press F5 in that tab.
-:done
-
-echo.
-echo ============================================
-echo   URL: http://localhost:5173
-echo   LAN for others: http://YOUR-LAN-IP:5173
-echo ============================================
-echo.
-echo To stop: double-click stop.bat
+echo [ERROR] Python 3.11+ not found.
+echo   Download: https://www.python.org/downloads/
+echo   IMPORTANT: Check "Add Python to PATH" during installation.
 echo.
 pause
+exit /b 1
+
+:nonpm
+echo.
+echo [ERROR] Node.js (npm) not found.
+echo   Download: https://nodejs.org/
+echo.
+pause
+exit /b 1
+
+:tmpfail
+echo.
+echo [ERROR] Cannot create temp directory: %TMP%
+pause
+exit /b 1
