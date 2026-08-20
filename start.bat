@@ -148,19 +148,13 @@ if exist "%ROOT%\frontend\node_modules\.bin\vite.cmd" if exist "%ROOT%\frontend\
 echo [INFO] node_modules incomplete (missing vite or npm bin) - reinstalling ...
 rd /s /q "%ROOT%\frontend\node_modules" >nul 2>&1
 :need_install
-echo       Pre-repairing npm package (avoids Node 20 install bug) ...
-pushd "%ROOT%\frontend"
-"%NPM%" install npm --no-save --no-audit --no-fund >nul 2>&1
-popd
 echo       Installing frontend deps (1-3 min) ...
 echo.
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
 echo.
-echo [WARN] npm install failed. Re-repairing npm package and retrying ...
-pushd "%ROOT%\frontend"
-"%NPM%" install npm --no-save --no-audit --no-fund >nul 2>&1
-popd
+echo [WARN] npm install failed. Workaround: clearing node_modules\npm and retrying ...
+rd /s /q "%ROOT%\frontend\node_modules\npm" >nul 2>&1
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
 echo.
@@ -171,17 +165,11 @@ echo [WARN] Still failed. Retrying with China mirror (npmmirror.com) ...
     echo cd /d "%ROOT%\frontend"
     echo call "%NPM%" install --no-audit --no-fund --registry=https://registry.npmmirror.com
 ) > "%TMP%\do_install.bat"
-pushd "%ROOT%\frontend"
-"%NPM%" install npm --no-save --no-audit --no-fund >nul 2>&1
-popd
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
 echo.
 echo [WARN] Last attempt: full clean reinstall ...
 rd /s /q "%ROOT%\frontend\node_modules" >nul 2>&1
-pushd "%ROOT%\frontend"
-"%NPM%" install npm --no-save --no-audit --no-fund >nul 2>&1
-popd
 (
     echo @echo off
     echo chcp 65001 ^>nul
