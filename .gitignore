@@ -26,11 +26,6 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
-# ---------- 本地工具脚本（含路径信息，按需提交） ----------
-start.bat
-stop.bat
-防火墙放行.bat
-
 # ---------- 系统 / 编辑器 ----------
 .DS_Store
 Thumbs.db
