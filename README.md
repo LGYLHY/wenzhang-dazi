@@ -18,7 +18,21 @@
 
 ## 快速开始
 
-### 1. 后端
+> **没有 API Key 也能运行！** 未配置 Key 时自动走 **mock 演示模式**（内置 62 条文案 + 关键词联想，功能完整）；配置 Key 后走真实 AI。
+
+### 方式一：一键启动（推荐）
+
+```bash
+# Windows：双击 start.bat
+# macOS / Linux：
+./start.sh
+```
+
+脚本会自动：首次安装依赖 → 启动前后端 → 打开浏览器（Windows 停止用 `stop.bat`）。
+
+### 方式二：手动启动
+
+**后端**
 
 ```bash
 cd backend
@@ -26,15 +40,13 @@ pip install -r requirements.txt
 python -m uvicorn app:app --port 8000
 ```
 
-**配置 API Key（可选但推荐）**：在 `backend/` 下创建 `.env`：
+**配置 API Key（可选）**：在 `backend/` 下创建 `.env`：
 
 ```
 DASHSCOPE_API_KEY=sk-你的通义千问Key
 ```
 
-> 未配置 Key 时自动走**内置 mock 文案池**（62 条，关键词联想），开发/演示闭环无忧；配置后走真实 AI。
-
-### 2. 前端
+**前端**
 
 ```bash
 cd frontend
