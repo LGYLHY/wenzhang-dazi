@@ -177,14 +177,19 @@ echo ============================================
 echo.
 echo Two service windows are running. Use stop.bat to close them.
 
-REM ---- smart-open browser (don't duplicate an existing tab) ----
-powershell -NoProfile -Command "try{$c=Get-NetTCPConnection -LocalPort %FPORT% -State Established -ErrorAction Stop; exit 1}catch{exit 0}" >nul 2>&1
-if not errorlevel 1 (
-    start "" "http://localhost:%FPORT%"
-    echo [INFO] Browser opened.
-) else (
-    echo [INFO] A page is already open on port %FPORT% - just press F5 in that tab.
-)
+REM ---- wait for frontend to be ready, then ALWAYS open browser ----
+echo [INFO] Waiting for frontend to be ready ...
+set "FCNT=0"
+:fwait
+set /a FCNT+=1
+timeout /t 1 /nobreak >nul
+powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; try{$r=Invoke-WebRequest -Uri 'http://localhost:%FPORT%/' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0}else{exit 1}}catch{exit 1}" >nul 2>&1
+if not errorlevel 1 goto fopen
+if "%FCNT%"=="12" goto fopen
+goto fwait
+:fopen
+start "" "http://localhost:%FPORT%"
+echo [INFO] Browser opened: http://localhost:%FPORT%
 
 echo.
 echo This window will close in 5s. Services keep running.
