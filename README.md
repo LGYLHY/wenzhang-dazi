@@ -20,6 +20,11 @@
 
 > **没有 API Key 也能运行！** 未配置 Key 时自动走 **mock 演示模式**（内置 62 条文案 + 关键词联想，功能完整）；配置 Key 后走真实 AI。
 
+### 前置环境（先装这两个）
+
+- **Python** 3.11+：https://www.python.org/downloads/ （✅ 必须勾选 "Add Python to PATH"）
+- **Node.js 22 LTS 或更新**：https://nodejs.org/ （⚠️ **Node 20 在 Windows 上 npm install 有 race condition bug，必须 22+**）
+
 ### 方式一：一键启动（推荐）
 
 ```bash

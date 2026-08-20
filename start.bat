@@ -142,6 +142,19 @@ echo [1/4] Starting backend (port %BPORT%) ...
 start "backend-%BPORT%" cmd /c "%TMP%\run_backend.bat"
 echo [OK] backend window opened.
 
+REM ---- early Node version check (Node 20 + Windows has npm race condition bug) ----
+echo [CHECK] Node.js version:
+node -v
+node -v | findstr /B "v22 v23 v24 v25 v26 v27 v28 v29" >nul 2>&1
+if not errorlevel 1 goto nodeok
+echo.
+echo [WARN] Node.js version does not start with v22+.
+echo        Node 20 LTS has a KNOWN npm race condition bug on Windows that breaks
+echo        npm install (npm-prefix.js / npm-cli.js end up missing). If npm install
+echo        fails later, install Node 22 LTS from https://nodejs.org/ (download the
+echo        "LTS" version 22.x).
+:nodeok
+
 echo [2/4] Preparing frontend ...
 if not exist "%ROOT%\frontend\node_modules" goto need_install
 if exist "%ROOT%\frontend\node_modules\.bin\vite.cmd" if exist "%ROOT%\frontend\node_modules\npm\bin\npm-cli.js" goto have_modules
@@ -182,7 +195,10 @@ echo.
 echo [ERROR] npm install failed after 3 attempts. Please try:
 echo   1. Switch to a different network (e.g. mobile hotspot)
 echo   2. Make sure project path has NO Chinese/parentheses, e.g. D:\wenzhang-dazi
-echo   3. Update Node.js to 20 LTS or 22+: https://nodejs.org/
+echo   3. **Update Node.js to 22 LTS or newer**: https://nodejs.org/
+echo      (Node 20 has a KNOWN npm race condition bug on Windows that breaks every
+echo       npm install - npm-prefix.js / npm-cli.js end up missing. Node 22 LTS
+echo       ships npm 11 which fixes this.)
 echo.
 pause
 exit /b 1
