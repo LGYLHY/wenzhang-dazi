@@ -118,6 +118,22 @@ set "NPM_CONFIG_TMP=%TEMP%\npm-tmp-wzd"
     echo call "%NPM%" install --no-audit --no-fund
 ) > "%TMP%\do_install.bat"
 
+REM ---- ensure python deps (fastapi/uvicorn/chromadb) ----
+echo [PRE] Ensuring python deps (fastapi, uvicorn, chromadb) ...
+"%PY%" -c "import fastapi, uvicorn, chromadb" >nul 2>&1
+if not errorlevel 1 goto pydepsok
+echo       Installing python deps via pip (1-3 min) ...
+"%PY%" -m pip install -q --disable-pip-version-check -r "%ROOT%\backend\requirements.txt"
+if not errorlevel 1 goto pydepsok
+echo.
+echo [ERROR] pip install failed. Check network, or run manually:
+echo   "%PY%" -m pip install -r "%ROOT%\backend\requirements.txt"
+echo.
+pause
+exit /b 1
+:pydepsok
+echo [OK] python deps ready.
+
 echo [1/4] Starting backend (port %BPORT%) ...
 start "backend-%BPORT%" cmd /c "%TMP%\run_backend.bat"
 echo [OK] backend window opened.
@@ -133,8 +149,12 @@ echo.
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
 echo.
-echo [WARN] npm install with default registry failed.
-echo        Retrying with China mirror (npmmirror.com) ...
+echo [WARN] npm install failed. Workaround: clearing node_modules\npm and retrying ...
+rd /s /q "%ROOT%\frontend\node_modules\npm" >nul 2>&1
+call "%TMP%\do_install.bat"
+if not errorlevel 1 goto install_ok
+echo.
+echo [WARN] Still failed. Retrying with China mirror (npmmirror.com) ...
 (
     echo @echo off
     echo chcp 65001 ^>nul
@@ -144,10 +164,21 @@ echo        Retrying with China mirror (npmmirror.com) ...
 call "%TMP%\do_install.bat"
 if not errorlevel 1 goto install_ok
 echo.
-echo [ERROR] npm install failed. Please try:
+echo [WARN] Last attempt: full clean reinstall ...
+rd /s /q "%ROOT%\frontend\node_modules" >nul 2>&1
+(
+    echo @echo off
+    echo chcp 65001 ^>nul
+    echo cd /d "%ROOT%\frontend"
+    echo call "%NPM%" install --no-audit --no-fund
+) > "%TMP%\do_install.bat"
+call "%TMP%\do_install.bat"
+if not errorlevel 1 goto install_ok
+echo.
+echo [ERROR] npm install failed after 3 attempts. Please try:
 echo   1. Switch to a different network (e.g. mobile hotspot)
 echo   2. Move project to a simple path like D:\wenzhang-dazi
-echo   3. Check Node.js version (need 18+): node -v
+echo   3. Update Node.js to 20 LTS or 22+: https://nodejs.org/
 echo.
 pause
 exit /b 1
