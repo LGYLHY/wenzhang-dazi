@@ -1,34 +1,32 @@
 @echo off
 chcp 65001 >nul
-title Wutang-mocha Wenan Dazi - Launcher
+title 文案搭子 - 一键启动
 
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
 echo ==========================================
-echo  Wutang-mocha Wenan Dazi - One-click start
+echo   文案搭子 · 一键启动
 echo ==========================================
 echo.
 
-REM ---- HARD REJECT paths with Chinese or parens (breaks Node 20 npm install on Windows) ----
+REM ---- 路径检查：含中文或括号会导致 npm / 启动异常 ----
 powershell -NoProfile -Command "if ('%ROOT%' -match '[\u4e00-\u9fa5()]') {exit 1} else {exit 0}" >nul 2>&1
 if errorlevel 1 goto badpath
 goto pathok
 :badpath
 echo.
-echo [ERROR] Project path contains Chinese characters or parentheses.
-echo   Current: %ROOT%
-echo   This breaks npm install on Node 20 + Windows (known bug).
-echo   Please MOVE the project to a simple ASCII path, e.g.:
+echo [ERROR] 项目路径包含中文或括号，会导致启动失败。
+echo   当前路径：%ROOT%
+echo   请先把整个文件夹移动到纯英文、无括号的路径，例如：
 echo     D:\wenzhang-dazi
-echo   Then double-click start.bat again.
+echo   然后再双击 start.bat。
 echo.
 pause
 exit /b 1
 :pathok
 
-REM ---- locate python (MUST use a python that has chromadb;
-REM       user's PATH may put hermes-agent venv first which lacks it) ----
+REM ---- 定位 Python（必须使用自带 chromadb 的那个 Python）----
 set "PY="
 if exist "%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe" set "PY=%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe"
 if not "%PY%"=="" goto pyok
@@ -40,16 +38,23 @@ for /f "delims=" %%i in ('where python 2^>nul') do (
 if "%PY%"=="" goto nopython
 echo [OK] python : %PY%
 
-REM ---- locate npm ----
-set "NPM="
-where npm >nul 2>&1
-if not errorlevel 1 set "NPM=npm"
-if "%NPM%"=="" if exist "%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd" set "NPM=%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd"
-if "%NPM%"=="" goto nonpm
-echo [OK] npm    : %NPM%
+REM ---- 确保 Python 依赖（fastapi / uvicorn / chromadb）----
+echo [PRE] 检查 Python 依赖（fastapi, uvicorn, chromadb）...
+"%PY%" -c "import fastapi, uvicorn, chromadb" >nul 2>&1
+if not errorlevel 1 goto pydepsok
+echo       未安装，正在 pip install（约 1-3 分钟，请稍候）...
+"%PY%" -m pip install -q --disable-pip-version-check -r "%ROOT%\backend\requirements.txt"
+if not errorlevel 1 goto pydepsok
 echo.
+echo [ERROR] pip install 失败。请检查网络，或手动运行：
+echo   "%PY%" -m pip install -r "%ROOT%\backend\requirements.txt"
+echo.
+pause
+exit /b 1
+:pydepsok
+echo [OK] Python 依赖就绪。
 
-REM ---- pick a FREE backend port (avoid colliding with another running service) ----
+REM ---- 选择一个空闲的后端端口（避免与他人已占用 8000 的服务冲突）----
 set "BPORT=8000"
 :bportscan
 netstat -ano | findstr ":%BPORT% " | findstr "LISTENING" >nul 2>&1
@@ -60,14 +65,56 @@ set /a BPORT+=1
 if %BPORT% gtr 8020 goto bportfail
 goto bportscan
 :bportok
-echo [OK] backend port : %BPORT%
-goto fportprep
+echo [OK] 后端端口 : %BPORT%
+goto mktemp
 :bportfail
-echo [WARN] Could not find a free port 8000-8020, falling back to 8000.
+echo [WARN] 8000-8020 均未空闲，回退到 8000。
 set "BPORT=8000"
-:fportprep
+:mktemp
 
-REM ---- pick a FREE frontend port (avoid showing someone else's project on 5173) ----
+REM ---- 临时启动脚本（避免项目路径含特殊字符时 start 报错）----
+set "TMP=%TEMP%\wzd-launcher-%RANDOM%"
+mkdir "%TMP%" 2>nul
+
+(
+    echo @echo off
+    echo chcp 65001 ^>nul
+    echo cd /d "%ROOT%\backend"
+    echo "%PY%" -m uvicorn app:app --host 0.0.0.0 --port %BPORT%
+    echo.
+    echo [backend 已停止] 按任意键关闭。
+    echo pause ^>nul
+) > "%TMP%\run_backend.bat"
+
+echo [1/3] 启动后端（端口 %BPORT%）...
+start "backend-%BPORT%" cmd /c "%TMP%\run_backend.bat"
+echo [OK] 后端窗口已打开。
+
+echo [2/3] 等待后端就绪（最多 30 秒）...
+set "CNT=0"
+:waitloop
+set /a CNT+=1
+timeout /t 1 /nobreak >nul
+curl -s -o nul --max-time 2 "http://localhost:%BPORT%/api/health" >nul 2>&1
+if not errorlevel 1 goto ready
+if "%CNT%"=="30" goto beready
+goto waitloop
+:ready
+echo [OK] 后端已就绪。
+goto beready
+:beready
+
+REM ---- 前端模式：有 dist 则由后端直接托管（无需 Node / npm）；否则回退 Vite 开发模式 ----
+if exist "%ROOT%\frontend\dist\index.html" goto staticmode
+
+echo [3/3] 未检测到 frontend/dist，回退到 Vite 开发模式（需要 Node + npm）...
+set "NPM="
+where npm >nul 2>&1
+if not errorlevel 1 set "NPM=npm"
+if "%NPM%"=="" if exist "%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd" set "NPM=%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\npm.cmd"
+if "%NPM%"=="" goto nonpm
+echo [OK] npm    : %NPM%
+
 set "FPORT=5173"
 :fportscan
 netstat -ano | findstr ":%FPORT% " | findstr "LISTENING" >nul 2>&1
@@ -78,32 +125,12 @@ set /a FPORT+=1
 if %FPORT% gtr 5199 goto fportfail
 goto fportscan
 :fportok
-echo [OK] frontend port: %FPORT%
-goto mktemp
+echo [OK] 前端端口: %FPORT%
+goto mkfront
 :fportfail
-echo [WARN] Could not find a free port 5173-5199, falling back to 5173.
+echo [WARN] 5173-5199 均未空闲，回退到 5173。
 set "FPORT=5173"
-:mktemp
-
-REM ---- create temp helper scripts so 'start' never sees the project path with parens ----
-set "TMP=%TEMP%\wzd-launcher-%RANDOM%"
-mkdir "%TMP%" 2>nul
-if not exist "%TMP%" goto tmpfail
-
-REM Use a SAFE cache dir (no parens) so npm never writes inside the project path
-set "NPM_CONFIG_CACHE=%TEMP%\npm-cache-wzd"
-set "NPM_CONFIG_TMP=%TEMP%\npm-tmp-wzd"
-
-(
-    echo @echo off
-    echo chcp 65001 ^>nul
-    echo cd /d "%ROOT%\backend"
-    echo "%PY%" -m uvicorn app:app --host 0.0.0.0 --port %BPORT%
-    echo.
-    echo [backend stopped] Press any key to close.
-    echo pause ^>nul
-) > "%TMP%\run_backend.bat"
-
+:mkfront
 (
     echo @echo off
     echo chcp 65001 ^>nul
@@ -111,177 +138,60 @@ set "NPM_CONFIG_TMP=%TEMP%\npm-tmp-wzd"
     echo set "VITE_API_PORT=%BPORT%"
     echo call "%NPM%" run dev -- --port %FPORT%
     echo.
-    echo [frontend stopped] Press any key to close.
+    echo [frontend 已停止] 按任意键关闭。
     echo pause ^>nul
 ) > "%TMP%\run_frontend.bat"
-
-(
-    echo @echo off
-    echo chcp 65001 ^>nul
-    echo cd /d "%ROOT%\frontend"
-    echo call "%NPM%" install --no-audit --no-fund
-) > "%TMP%\do_install.bat"
-
-REM ---- ensure python deps (fastapi/uvicorn/chromadb) ----
-echo [PRE] Ensuring python deps (fastapi, uvicorn, chromadb) ...
-"%PY%" -c "import fastapi, uvicorn, chromadb" >nul 2>&1
-if not errorlevel 1 goto pydepsok
-echo       Installing python deps via pip (1-3 min) ...
-"%PY%" -m pip install -q --disable-pip-version-check -r "%ROOT%\backend\requirements.txt"
-if not errorlevel 1 goto pydepsok
-echo.
-echo [ERROR] pip install failed. Check network, or run manually:
-echo   "%PY%" -m pip install -r "%ROOT%\backend\requirements.txt"
-echo.
-pause
-exit /b 1
-:pydepsok
-echo [OK] python deps ready.
-
-echo [1/4] Starting backend (port %BPORT%) ...
-start "backend-%BPORT%" cmd /c "%TMP%\run_backend.bat"
-echo [OK] backend window opened.
-
-REM ---- early Node version check (Node 20 + Windows has npm race condition bug) ----
-echo [CHECK] Node.js version:
-node -v
-node -v | findstr /B "v22 v23 v24 v25 v26 v27 v28 v29" >nul 2>&1
-if not errorlevel 1 goto nodeok
-echo.
-echo [WARN] Node.js version does not start with v22+.
-echo        Node 20 LTS has a KNOWN npm race condition bug on Windows that breaks
-echo        npm install (npm-prefix.js / npm-cli.js end up missing). If npm install
-echo        fails later, install Node 22 LTS from https://nodejs.org/ (download the
-echo        "LTS" version 22.x).
-:nodeok
-
-echo [2/4] Preparing frontend ...
-if not exist "%ROOT%\frontend\node_modules" goto need_install
-if exist "%ROOT%\frontend\node_modules\.bin\vite.cmd" if exist "%ROOT%\frontend\node_modules\npm\bin\npm-cli.js" goto have_modules
-echo [INFO] node_modules incomplete (missing vite or npm bin) - reinstalling ...
-rd /s /q "%ROOT%\frontend\node_modules" >nul 2>&1
-:need_install
-echo       Installing frontend deps (1-3 min) ...
-echo.
-call "%TMP%\do_install.bat"
-if not errorlevel 1 goto install_ok
-echo.
-echo [WARN] npm install failed. Workaround: clearing node_modules\npm and retrying ...
-rd /s /q "%ROOT%\frontend\node_modules\npm" >nul 2>&1
-call "%TMP%\do_install.bat"
-if not errorlevel 1 goto install_ok
-echo.
-echo [WARN] Still failed. Retrying with China mirror (npmmirror.com) ...
-(
-    echo @echo off
-    echo chcp 65001 ^>nul
-    echo cd /d "%ROOT%\frontend"
-    echo call "%NPM%" install --no-audit --no-fund --registry=https://registry.npmmirror.com
-) > "%TMP%\do_install.bat"
-call "%TMP%\do_install.bat"
-if not errorlevel 1 goto install_ok
-echo.
-echo [WARN] Last attempt: full clean reinstall ...
-rd /s /q "%ROOT%\frontend\node_modules" >nul 2>&1
-(
-    echo @echo off
-    echo chcp 65001 ^>nul
-    echo cd /d "%ROOT%\frontend"
-    echo call "%NPM%" install --no-audit --no-fund
-) > "%TMP%\do_install.bat"
-call "%TMP%\do_install.bat"
-if not errorlevel 1 goto install_ok
-echo.
-echo [ERROR] npm install failed after 3 attempts. Please try:
-echo   1. Switch to a different network (e.g. mobile hotspot)
-echo   2. Make sure project path has NO Chinese/parentheses, e.g. D:\wenzhang-dazi
-echo   3. **Update Node.js to 22 LTS or newer**: https://nodejs.org/
-echo      (Node 20 has a KNOWN npm race condition bug on Windows that breaks every
-echo       npm install - npm-prefix.js / npm-cli.js end up missing. Node 22 LTS
-echo       ships npm 11 which fixes this.)
-echo.
-pause
-exit /b 1
-
-:install_ok
-echo [OK] npm install done.
-:have_modules
-
-echo [3/4] Starting frontend (port %FPORT%) ...
+echo       启动前端（端口 %FPORT%）...
 start "frontend-%FPORT%" cmd /c "%TMP%\run_frontend.bat"
-echo [OK] frontend window opened.
-
-echo.
-echo [4/4] Waiting for backend to be ready (max 30s) ...
-set "CNT=0"
-:waitloop
-set /a CNT+=1
-timeout /t 1 /nobreak >nul
-curl -s -o nul --max-time 2 "http://localhost:%BPORT%/api/health" >nul 2>&1
-if not errorlevel 1 goto ready
-if "%CNT%"=="30" goto fe
-goto waitloop
-:ready
-echo [OK] Backend is up.
-goto showurls
-:fe
-echo [WARN] Backend did not respond after 30s. Check the "backend-%BPORT%" window.
-
-:showurls
-echo.
-echo ============================================
-echo  Product is ready!
-echo  Browser :  http://localhost:%FPORT%
-echo  Backend :  http://localhost:%BPORT%/api/health
-echo ============================================
-echo.
-echo Two service windows are running. Use stop.bat to close them.
-
-REM ---- wait for frontend to be ready, then open browser ----
-echo [INFO] Waiting for frontend to be ready (up to 30s) ...
+set "SHOWPORT=%FPORT%"
+echo [INFO] 等待前端就绪（最多 30 秒）...
 set "FCNT=0"
 :fwait
 set /a FCNT+=1
 timeout /t 1 /nobreak >nul
 curl -s -o nul --max-time 2 "http://localhost:%FPORT%/" >nul 2>&1
 if not errorlevel 1 goto fready
-if "%FCNT%"=="30" goto fnotready
+if "%FCNT%"=="30" goto fopen
 goto fwait
 :fready
-echo [OK] Frontend is up.
+echo [OK] 前端已就绪。
 goto fopen
-:fnotready
-echo [WARN] Frontend did not respond after 30s.
-echo        Check the "frontend-%FPORT%" window - it should show "Local: http://localhost:%FPORT%/".
-echo        Browser will still open; if the page fails, wait 10s then press F5.
-:fopen
-start "" "http://localhost:%FPORT%"
-echo [INFO] Browser opened: http://localhost:%FPORT%
 
+:staticmode
+echo [3/3] 检测到 frontend/dist，由后端直接托管前端（无需安装 Node / npm）。
+set "SHOWPORT=%BPORT%"
+
+:fopen
 echo.
-echo This window will close in 5s. Services keep running.
+echo ============================================
+echo  产品已就绪！
+echo  浏览器 : http://localhost:%SHOWPORT%
+echo  后端   : http://localhost:%BPORT%/api/health
+echo ============================================
+echo.
+echo 两个服务窗口正在运行，使用 stop.bat 可一键关闭。
+start "" "http://localhost:%SHOWPORT%"
+echo [INFO] 已尝试打开浏览器。
+echo.
+echo 本窗口 5 秒后关闭，服务继续在后台运行。
 timeout /t 5 /nobreak >nul
 exit /b 0
 
 :nopython
 echo.
-echo [ERROR] Python 3.11+ not found.
-echo   Download: https://www.python.org/downloads/
-echo   IMPORTANT: Check "Add Python to PATH" during installation.
+echo [ERROR] 未找到 Python 3.11+。
+echo   下载地址：https://www.python.org/downloads/
+echo   安装时请务必勾选 "Add Python to PATH"。
 echo.
 pause
 exit /b 1
 
 :nonpm
 echo.
-echo [ERROR] Node.js (npm) not found.
-echo   Download: https://nodejs.org/
+echo [ERROR] 未检测到 Node.js（npm），且 frontend/dist 不存在。
+echo   开发模式需要 Node；或者先在本机执行 `npm run build` 生成 dist 后，
+echo   后端即可直接托管前端，无需 Node。
+echo   下载 Node：https://nodejs.org/
 echo.
-pause
-exit /b 1
-
-:tmpfail
-echo.
-echo [ERROR] Cannot create temp directory: %TMP%
 pause
 exit /b 1

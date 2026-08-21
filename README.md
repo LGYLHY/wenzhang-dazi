@@ -20,12 +20,12 @@
 
 > **没有 API Key 也能运行！** 未配置 Key 时自动走 **mock 演示模式**（内置 62 条文案 + 关键词联想，功能完整）；配置 Key 后走真实 AI。
 
-### 前置环境（先装这两个）
+### 前置环境（运行只需 Python）
 
 - **Python** 3.11+：https://www.python.org/downloads/ （✅ 必须勾选 "Add Python to PATH"）
-- **Node.js 22 LTS 或更新**：https://nodejs.org/ （⚠️ **Node 20 在 Windows 上 npm install 有 race condition bug，必须 22+**）
+- **Node.js（可选）**：**仅当你要修改前端源码并重新构建时才需要**。仓库已内置构建好的 `frontend/dist/`，下载者双击 `start.bat` 即可运行，**无需安装 Node / npm**。
 
-### 方式一：一键启动（推荐）
+### 方式一：一键启动（推荐，零前端依赖）
 
 ```bash
 # Windows：双击 start.bat
@@ -33,17 +33,22 @@
 ./start.sh
 ```
 
-脚本会自动：首次安装依赖 → 启动前后端 → 打开浏览器（Windows 停止用 `stop.bat`）。
+脚本会自动：安装 Python 依赖 → 启动后端（后端同时托管前端 `dist/`）→ 打开浏览器。
+**整个过程不需要 Node / npm。**（Windows 停止用 `stop.bat`）
 
-### 方式二：手动启动
+> 为什么不需要 Node？仓库里的 `frontend/dist/` 是已经构建好的静态文件，由 FastAPI 后端直接托管，所以下载者完全不必安装前端工具链。
+
+### 方式二：手动启动（仅后端即可运行）
 
 **后端**
 
 ```bash
 cd backend
 pip install -r requirements.txt
-python -m uvicorn app:app --port 8000
+python -m uvicorn app:app --port 8000   # 浏览器打开 http://localhost:8000 即为产品页面
 ```
+
+后端启动后会自动托管 `frontend/dist/`，直接访问后端端口即可使用全部功能。
 
 **配置 API Key（可选）**：在 `backend/` 下创建 `.env`：
 
@@ -51,15 +56,17 @@ python -m uvicorn app:app --port 8000
 DASHSCOPE_API_KEY=sk-你的通义千问Key
 ```
 
-**前端**
+### （仅开发者）修改前端后重新构建
+
+如果你改了 `frontend/src/` 下的代码，需要本地装一次 Node 后重新构建：
 
 ```bash
 cd frontend
 npm install
-npm run dev    # http://localhost:5173
+npm run build    # 重新生成 frontend/dist/，然后提交到仓库
 ```
 
-Vite 已把 `/api/*` 代理到 `http://127.0.0.1:8000`。
+> 若 `frontend/dist/` 不存在，脚本会回退到 Vite 开发模式（此时才需要 Node + npm）。
 
 ### 3. 测试
 
